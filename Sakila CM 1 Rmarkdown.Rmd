@@ -1,0 +1,297 @@
+---
+title: Analisis Pengaruh Keterlibatan Aktor Terhadap Frekuensi Rental Film pada Database
+  Sakila
+author: "Alyssa Divania | M0725059 | kelas D"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: cosmo
+    highlight: tango
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+    toc_depth: 2
+    number_sections: true
+---
+
+<style>
+
+body {
+  font-family: Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.9;
+  text-align: justify;
+  color: #2c2c2c;
+  background-color: #f9f9f9;
+}
+
+h1 {
+  color: white;
+  background: linear-gradient(135deg, #1a3a5c, #2c7fb8);
+  padding: 14px 20px;
+  border-radius: 10px;
+  text-align: center;
+  margin-top: 2rem;
+}
+
+h2 {
+  color: #8b0000;
+  border-bottom: 2px solid #8b0000;
+  padding-bottom: 6px;
+  margin-top: 2rem;
+}
+
+h3 {
+  color: #1a3a5c;
+  border-left: 5px solid #2c7fb8;
+  padding-left: 12px;
+  margin-top: 1.5rem;
+}
+
+code {
+  background-color: #eef3f8;
+  color: #c0392b;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+blockquote {
+  border-left: 5px solid #2c7fb8;
+  background-color: #eef3f8;
+  padding: 12px 18px;
+  border-radius: 0 8px 8px 0;
+  color: #1a3a5c;
+  font-style: italic;
+  margin: 1.2rem 0;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+  margin: 1rem 0;
+}
+
+th {
+  background-color: #1a3a5c;
+  color: white;
+  padding: 10px 14px;
+  text-align: center;
+}
+
+td {
+  padding: 8px 14px;
+  border-bottom: 1px solid #dde3ea;
+  text-align: center;
+}
+
+tr:nth-child(even) { background-color: #f0f4f8; }
+tr:hover { background-color: #d6e8f5; }
+
+.info-box {
+  background-color: #eef3f8;
+  border: 1px solid #2c7fb8;
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin: 1.2rem 0;
+}
+
+.kesimpulan-box {
+  background-color: #fff8e1;
+  border-left: 6px solid #f39c12;
+  border-radius: 0 8px 8px 0;
+  padding: 14px 18px;
+  margin: 1.5rem 0;
+}
+
+</style>
+
+# Deskripsi Insight
+
+Penelitian ini bertujuan untuk menganalisis apakah aktor yang terlibat dalam
+lebih banyak film memiliki pengaruh terhadap peningkatan frekuensi rental film
+pada database **Sakila** — database sampel resmi MySQL yang merepresentasikan
+sistem manajemen penyewaan film.
+
+> *Apakah aktor yang membintangi lebih banyak film akan menghasilkan
+> jumlah transaksi rental yang lebih tinggi?*
+
+# Connect Data Data SQL ke R
+```{r}
+library(DBI)
+library(odbc)
+
+con1 <- dbConnect(odbc(),
+                  Driver   = "MySQL ODBC 8.0 ANSI Driver",
+                  Server   = "127.0.0.1",
+                  UID      = "root",
+                  PWD      = "Shafidiva23",        
+                  Port     = 3306,
+                  Database = "sakila")
+```
+
+## Sumber Data
+
+| Tabel | Keterangan |
+|---|---|
+| `actor` | Data identitas aktor |
+| `film_actor` | Relasi aktor dan film |
+| `film` | Data detail film |
+| `inventory` | Stok fisik film |
+| `rental` | Transaksi penyewaan film |
+
+## Variabel Penelitian
+
+- **`total_films`** — jumlah film unik yang dibintangi seorang aktor
+- **`total_rentals`** — jumlah total transaksi rental dari film yang dibintangi aktor
+
+# Query SQL
+```{sql, eval=FALSE}
+SELECT
+  a.actor_id,
+  CONCAT(a.first_name, ' ', a.last_name) AS actor_name,
+  COUNT(DISTINCT fa.film_id) AS total_films,
+  COUNT(r.rental_id) AS total_rentals
+FROM actor a
+  JOIN film_actor fa ON a.actor_id = fa.actor_id
+  JOIN film f ON fa.film_id = f.film_id
+  JOIN inventory i ON f.film_id = i.film_id
+  JOIN rental r ON i.inventory_id = r.inventory_id
+GROUP BY a.actor_id, actor_name
+ORDER BY total_rentals DESC;
+```
+
+<div class="info-box">
+**Alur relasi tabel:** `actor` → `film_actor` → `film` → `inventory` → `rental`
+</div>
+
+# Import Library dan Dataset
+```{r}
+library(ggplot2)
+library(dplyr)
+```
+```{r}
+data <- read.csv("actor_rental.csv")
+head(data)
+```
+
+# Visualisasi
+
+## Top 10 Aktor dengan Film Terbanyak
+
+```{r vis-bar, fig.width=9, fig.height=5, fig.align='center'}
+top_actor <- data %>%
+  arrange(desc(total_films)) %>%
+  slice_head(n = 10)
+
+ggplot(top_actor,
+       aes(x = reorder(actor_name, total_films),
+           y = total_films,
+           fill = total_films)) +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.7) +
+  geom_text(aes(label = total_films), hjust = -0.2, size = 3.5) +
+  scale_fill_gradient(low = "#85B7EB", high = "#1a3a5c") +
+  coord_flip() +
+  scale_y_continuous(expand = expansion(c(0, 0.12))) +
+  labs(
+    title    = "Top 10 Aktor Berdasarkan Jumlah Film",
+    subtitle = "Database Sakila — diurutkan dari terbanyak",
+    x = "Nama Aktor",
+    y = "Jumlah Film"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title             = element_text(face = "bold", size = 14),
+    plot.subtitle          = element_text(color = "gray50", size = 11),
+    panel.grid.major.y     = element_blank()
+  )
+```
+
+Visualisasi menunjukkan 10 aktor dengan keterlibatan film terbanyak dalam
+database Sakila. Aktor-aktor ini membintangi jauh lebih banyak film dibanding
+rata-rata, yang mengindikasikan dominasi sebagian kecil aktor dalam katalog film.
+
+## Hubungan Total Film dan Total Rental
+
+```{r vis-scatter, fig.width=9, fig.height=5, fig.align='center'}
+ggplot(data, aes(x = total_films, y = total_rentals)) +
+  geom_point(color = "#2c7fb8", alpha = 0.5, size = 2.8) +
+  geom_smooth(method = "lm", color = "#8b0000",
+              se = TRUE, linewidth = 1.2) +
+  labs(
+    title    = "Hubungan Jumlah Film dan Total Rental per Aktor",
+    subtitle = "Setiap titik mewakili satu aktor | Garis merah = regresi linear",
+    x = "Total Film yang Dibintangi",
+    y = "Total Transaksi Rental"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title    = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "gray50", size = 11)
+  )
+```
+
+Scatter plot memperlihatkan pola titik yang bergerak ke kanan atas,
+mengindikasikan hubungan positif antara jumlah film dan total rental.
+Garis regresi dengan confidence interval yang sempit menandakan
+konsistensi pola di seluruh data.
+Visualisasi menunjukkan aktor dengan jumlah keterlibatan film terbanyak dalam database Sakila.
+
+# Analisis Regresi Linear
+
+```{r regresi}
+model <- lm(total_rentals ~ total_films, data = data)
+summary(model)
+```
+
+## Persamaan Model
+
+$$\hat{Y} = -22{,}86 + 17{,}64 \cdot X$$
+
+- $\hat{Y}$ = prediksi total rental
+- $X$ = jumlah film yang dibintangi
+- $-22{,}86$ = intercept
+- $17{,}64$ = koefisien regresi
+
+# Interpretasi Hasil
+
+## Koefisien Regresi
+
+Koefisien regresi sebesar **17,64** menunjukkan bahwa setiap penambahan
+**1 film** yang dibintangi aktor akan meningkatkan total rental sebesar sekitar
+**17 transaksi**.
+
+Artinya, *semakin banyak film yang dibintangi seorang aktor, semakin besar pula peluang film tersebut untuk disewa oleh pelanggan*.
+
+## Signifikansi Statistik
+
+Nilai **p-value < 0,05** menunjukkan bahwa variabel `total_films`
+berpengaruh signifikan terhadap `total_rentals`.
+
+Artinya, jumlah film yang dibintangi aktor memang memiliki hubungan yang nyata
+terhadap jumlah transaksi rental dalam database Sakila.
+
+## Koefisien Determinasi (R²)
+
+Nilai **R² sebesar 88,24%** menunjukkan bahwa model mampu menjelaskan
+88,24% variasi jumlah rental berdasarkan jumlah film yang dibintangi aktor.
+
+Sedangkan sisanya sebesar 11,76% dapat dipengaruhi oleh faktor lain,
+seperti genre film, rating film, atau preferensi pelanggan.
+
+<div class="kesimpulan-box">
+
+**Kesimpulan**
+
+Berdasarkan hasil visualisasi dan regresi linear, jumlah film yang dibintangi
+aktor memiliki **pengaruh positif** terhadap total rental film.
+
+Semakin banyak film yang dibintangi seorang aktor, maka semakin tinggi pula
+potensi jumlah rental yang dihasilkan.
+
+Hal ini dibuktikan dengan nilai p-value yang signifikan serta nilai R²
+sebesar 88,24% yang menunjukkan model memiliki kemampuan prediksi yang baik. Meski demikian, perlu dipertimbangkan bahwa masih ada faktor lain di luar model yang mungkin turut memengaruhi frekuensi rental.
+
+</div>
